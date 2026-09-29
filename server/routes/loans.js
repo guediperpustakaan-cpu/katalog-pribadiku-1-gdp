@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { sql } from '../index.js'
+import { query, sql } from '../index.js'
 import { asyncHandler, buildInsert, buildUpdate, getUserId, toCamelCaseArray } from '../lib/helpers.js'
 
 const router = Router()
@@ -26,14 +26,15 @@ router.get(
     await syncOverdueLoans()
     const status = req.query.status && req.query.status !== 'all' ? String(req.query.status) : null
 
-    const rows = await sql`
-      SELECT l.*, b.title AS book_title, b.author AS book_author, b.isbn AS book_isbn
-      FROM loans l
-      LEFT JOIN books b ON b.id = l.book_id
-      WHERE l.user_id = ${getUserId()}
-      ${status ? sql`AND l.status = ${status}` : sql``}
-      ORDER BY l.borrowed_at DESC
-    `
+    const statusFilter = status ? `AND l.status = $2` : ''
+    const rows = await query(
+      `SELECT l.*, b.title AS book_title, b.author AS book_author, b.isbn AS book_isbn
+       FROM loans l
+       LEFT JOIN books b ON b.id = l.book_id
+       WHERE l.user_id = $1 ${statusFilter}
+       ORDER BY l.borrowed_at DESC`,
+      [getUserId(), ...(status ? [status] : [])]
+    )
     res.json(toCamelCaseArray(rows))
   })
 )
@@ -43,7 +44,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const body = { ...req.body, userId: getUserId(), status: req.body.status ?? 'dipinjam' }
     const { text, values } = buildInsert('loans', body)
-    const rows = await sql(text, values)
+    const rows = await query(text, values)
 
     // Tandai buku sebagai dipinjamkan
     await sql`
@@ -65,7 +66,7 @@ router.put(
     }
 
     const { text, values } = buildUpdate('loans', req.params.id, req.body)
-    const rows = await sql(text, values)
+    const rows = await query(text, values)
     const updated = toCamelCaseArray(rows)[0]
 
     // Jika sudah dikembalikan, kembalikan status kepemilikan buku

@@ -2,7 +2,8 @@
  * Klien API untuk backend Express + Neon PostgreSQL.
  *
  * Strategi ketahanan (resilience):
- *  - Jika `VITE_API_URL` tidak diisi, default memakai "http://localhost:3001/api".
+ *  - Jika `VITE_API_URL` tidak diisi, default memakai "http://localhost:3001/api"
+ *    saat development, dan "/api" (same-origin) saat production di Vercel.
  *  - Setiap permintaan memiliki timeout. Jika server tidak dapat dijangkau
  *    (mis. belum dijalankan atau koneksi terputus), aplikasi otomatis
  *    beralih ke penyimpanan lokal (localStorage) sebagai cadangan, dan
@@ -35,7 +36,11 @@ const listeners = new Set<(mode: BackendMode) => void>()
 /** URL dasar API (dari environment variable) */
 export function getApiUrl(): string {
   const fromEnv = import.meta.env.VITE_API_URL as string | undefined
-  return (fromEnv && fromEnv.trim()) || DEFAULT_API_URL
+  if (fromEnv && fromEnv.trim()) return fromEnv.trim()
+  // Di production (Vercel), API dilayani dari origin yang sama melalui
+  // rewrite `/api/*` ke serverless function. Di development, server
+  // Express berjalan terpisah di port 3001.
+  return import.meta.env.PROD ? '/api' : DEFAULT_API_URL
 }
 
 /** Mode backend yang sedang aktif */

@@ -8,6 +8,11 @@ dist
 dist-ssr
 *.local
 
+# TypeScript build info & compiled vite config
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
 # Environment variables (jangan pernah commit secret!)
 .env
 .env.local

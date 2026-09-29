@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { sql } from '../index.js'
+import { query, sql } from '../index.js'
 import { asyncHandler, getUserId } from '../lib/helpers.js'
 
 const router = Router()

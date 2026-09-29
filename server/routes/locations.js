@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { sql } from '../index.js'
+import { query, sql } from '../index.js'
 import { asyncHandler, buildInsert, buildUpdate, getUserId, toCamelCaseArray } from '../lib/helpers.js'
 
 const router = Router()
@@ -26,7 +26,7 @@ router.post(
   '/',
   asyncHandler(async (req, res) => {
     const { text, values } = buildInsert('storage_locations', { ...req.body, userId: getUserId() })
-    const rows = await sql(text, values)
+    const rows = await query(text, values)
     res.status(201).json(toCamelCaseArray(rows)[0])
   })
 )
@@ -35,7 +35,7 @@ router.put(
   '/:id',
   asyncHandler(async (req, res) => {
     const { text, values } = buildUpdate('storage_locations', req.params.id, req.body)
-    const rows = await sql(text, values)
+    const rows = await query(text, values)
     if (rows.length === 0) {
       return res.status(404).json({ message: 'Lokasi penyimpanan tidak ditemukan.' })
     }

@@ -4,15 +4,22 @@
  *   npm run db:migrate
  *
  * Membutuhkan DATABASE_URL pada file .env (connection string Neon).
+ *
+ * Catatan: migration memakai driver `pg` (node-postgres) karena ia
+ * mendukung eksekusi multi-statement & dollar-quoted strings ($$...$$)
+ * yang dipakai di schema.sql. Driver serverless `@neondatabase/serverless`
+ * (dipakai oleh API) hanya mendukung satu statement per permintaan HTTP,
+ * sehingga tidak cocok untuk menjalankan migration.
  */
 import dotenv from 'dotenv'
 import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { neon } from '@neondatabase/serverless'
+import pg from 'pg'
 
 dotenv.config()
 
+const { Pool } = pg
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 async function runMigration() {
@@ -28,13 +35,19 @@ async function runMigration() {
   }
 
   console.log('🔗 Menghubungkan ke database Neon...')
-  const sql = neon(databaseUrl)
+  // Neon memerlukan SSL. Karena connection string sudah memuat
+  // sslmode=require, pg akan memakai SSL otomatis.
+  const pool = new Pool({
+    connectionString: databaseUrl,
+    ssl: { rejectUnauthorized: true },
+  })
+  const client = await pool.connect()
 
   try {
     // Pastikan extension pendukung tersedia
     try {
-      await sql`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`
-      await sql`CREATE EXTENSION IF NOT EXISTS "pg_trgm"`
+      await client.query('CREATE EXTENSION IF NOT EXISTS "pgcrypto"')
+      await client.query('CREATE EXTENSION IF NOT EXISTS "pg_trgm"')
     } catch (err) {
       console.warn('⚠️  Tidak dapat membuat extension (mungkin sudah ada):', err.message)
     }
@@ -44,29 +57,34 @@ async function runMigration() {
 
     console.log('📄 Menjalankan skema database (db/schema.sql)...')
     const schema = readFileSync(schemaPath, 'utf-8')
-    await sql.unsafe(schema)
+    await client.query(schema)
     console.log('✅ Skema database berhasil dibuat.')
 
     console.log('🌱 Menambahkan data awal (db/seed.sql)...')
     const seed = readFileSync(seedPath, 'utf-8')
-    await sql.unsafe(seed)
+    await client.query(seed)
     console.log('✅ Data awal berhasil ditambahkan.')
 
-    const [{ count: bookCount }] = await sql`SELECT COUNT(*)::int AS count FROM books`
-    const [{ count: categoryCount }] = await sql`SELECT COUNT(*)::int AS count FROM categories`
-    const [{ count: locationCount }] = await sql`SELECT COUNT(*)::int AS count FROM storage_locations`
-    const [{ count: loanCount }] = await sql`SELECT COUNT(*)::int AS count FROM loans`
+    const { rows: bookRows } = await client.query('SELECT COUNT(*)::int AS count FROM books')
+    const { rows: categoryRows } = await client.query('SELECT COUNT(*)::int AS count FROM categories')
+    const { rows: locationRows } = await client.query(
+      'SELECT COUNT(*)::int AS count FROM storage_locations'
+    )
+    const { rows: loanRows } = await client.query('SELECT COUNT(*)::int AS count FROM loans')
 
     console.log('\n📊 Ringkasan data:')
-    console.log(`   Buku         : ${bookCount}`)
-    console.log(`   Kategori     : ${categoryCount}`)
-    console.log(`   Lokasi       : ${locationCount}`)
-    console.log(`   Peminjaman   : ${loanCount}`)
+    console.log(`   Buku         : ${bookRows[0].count}`)
+    console.log(`   Kategori     : ${categoryRows[0].count}`)
+    console.log(`   Lokasi       : ${locationRows[0].count}`)
+    console.log(`   Peminjaman   : ${loanRows[0].count}`)
     console.log('\n🎉 Migration selesai! Aplikasi siap digunakan.')
   } catch (error) {
     console.error('\n❌ Migration gagal:', error.message)
     console.error('\nTip: pastikan connection string Neon benar dan dapat diakses.')
     process.exit(1)
+  } finally {
+    client.release()
+    await pool.end()
   }
 }
 

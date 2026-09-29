@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { sql } from '../index.js'
+import { query, sql } from '../index.js'
 import { asyncHandler, buildInsert, buildUpdate, getUserId, toCamelCase, toCamelCaseArray } from '../lib/helpers.js'
 
 const router = Router()
@@ -59,13 +59,13 @@ router.get(
 
     const whereClause = `WHERE ${where.join(' AND ')}`
 
-    const totalRows = await sql(
+    const totalRows = await query(
       `SELECT COUNT(*)::int AS total FROM books ${whereClause}`,
       values
     )
     const total = totalRows[0]?.total ?? 0
 
-    const rows = await sql(
+    const rows = await query(
       `SELECT * FROM books ${whereClause} ORDER BY ${sortColumn} ${sortDirection} ${nulls}, title ASC LIMIT $${
         values.length + 1
       } OFFSET ${values.length + 2}`,
@@ -124,7 +124,7 @@ router.post(
     }
 
     const { text, values } = buildInsert('books', data)
-    const rows = await sql(text, values)
+    const rows = await query(text, values)
     res.status(201).json(toCamelCase(rows[0]))
   })
 )
@@ -155,7 +155,7 @@ router.post(
 
       try {
         const { text, values } = buildInsert('books', data)
-        await sql(text, values)
+        await query(text, values)
         if (data.isbn) existingIsbns.add(data.isbn)
         inserted += 1
       } catch (error) {
@@ -179,7 +179,7 @@ router.put(
     }
 
     const { text, values } = buildUpdate('books', req.params.id, req.body)
-    const updated = await sql(text, values)
+    const updated = await query(text, values)
     res.json(toCamelCase(updated[0]))
   })
 )
